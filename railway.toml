@@ -1,0 +1,5 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+startCommand = "mkdir -p /data/.openclaw && chmod 777 /data/.openclaw && node dist/index.js"
