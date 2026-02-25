@@ -9,6 +9,10 @@ RUN corepack enable
 WORKDIR /app
 RUN chown node:node /app
 
+# ✅ Railway runtime may try to mkdir /data before your app runs.
+# Ensure /data already exists and is writable to avoid "Permission denied".
+RUN mkdir -p /data && chmod 777 /data
+
 ARG OPENCLAW_DOCKER_APT_PACKAGES=""
 RUN if [ -n "$OPENCLAW_DOCKER_APT_PACKAGES" ]; then \
       apt-get update && \
@@ -26,9 +30,6 @@ USER node
 RUN pnpm install --frozen-lockfile
 
 # Optionally install Chromium and Xvfb for browser automation.
-# Build with: docker build --build-arg OPENCLAW_INSTALL_BROWSER=1 ...
-# Adds ~300MB but eliminates the 60-90s Playwright install on every container start.
-# Must run after pnpm install so playwright-core is available in node_modules.
 USER root
 ARG OPENCLAW_INSTALL_BROWSER=""
 RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
@@ -45,26 +46,22 @@ RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
 USER node
 COPY --chown=node:node . .
 RUN pnpm build
+
 # Force pnpm for UI build (Bun may fail on ARM/Synology architectures)
 ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm ui:build
 
 ENV NODE_ENV=production
 
+# ✅ Use writable dir in Railway (tmp is always writable)
 ENV OPENCLAW_STATE_DIR=/tmp/openclaw
 ENV OPENCLAW_WORKSPACE_DIR=/tmp/openclaw/workspace
 ENV HOME=/home/node
 
 # Security hardening: Run as non-root user
-# The node:22-bookworm image includes a 'node' user (uid 1000)
-# This reduces the attack surface by preventing container escape via root privileges
 USER node
 
-# Start gateway server with default config.
-# Binds to loopback (127.0.0.1) by default for security.
-#
-# For container platforms requiring external health checks:
-#   1. Set OPENCLAW_GATEWAY_TOKEN or OPENCLAW_GATEWAY_PASSWORD env var
-#   2. Override CMD: ["node","openclaw.mjs","gateway","--allow-unconfigured","--bind","lan"]
+# Prepare default home state dir too (optional)
 RUN mkdir -p /home/node/.openclaw && chown -R node:node /home/node/.openclaw
+
 CMD ["node", "openclaw.mjs", "gateway", "--allow-unconfigured", "--bind", "lan"]
