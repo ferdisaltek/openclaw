@@ -52,6 +52,6 @@ ENV OPENCLAW_STATE_DIR=/tmp/openclaw
 ENV OPENCLAW_WORKSPACE_DIR=/tmp/openclaw/workspace
 
 USER node
-
+#
 # ✅ Railway'nin beklediği $PORT'a bind et
 CMD ["sh", "-lc", "node openclaw.mjs gateway --allow-unconfigured --bind 0.0.0.0 --port ${PORT:-3000}"]
