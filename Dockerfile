@@ -63,4 +63,4 @@ USER node
 
 # Prepare default home state dir too (optional)
 RUN mkdir -p /home/node/.openclaw && chown -R node:node /home/node/.openclaw
-CMD ["sh", "-lc", "node openclaw.mjs gateway --allow-unconfigured --bind lan --port ${PORT:-3000}"]
+CMD ["sh", "-lc", "node openclaw.mjs gateway --allow-unconfigured --bind lan --port ${PORT}"]
