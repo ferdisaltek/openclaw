@@ -1,57 +1,55 @@
-FROM node:22-bookworm@sha256:cd7bcd2e7a1e6f72052feb023c7f6b722205d3fcab7bbcbd2d1bfdab10b1e935
+# =============================================================================
+# OPENCLAW RAILWAY TEMPLATE
+# Simple, secure deployment - uses official npm package
+# =============================================================================
 
-RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:${PATH}"
+FROM node:22-bookworm
 
-RUN corepack enable
+# Install minimal runtime dependencies
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    procps \
+  && rm -rf /var/lib/apt/lists/*
 
+# Install OpenClaw globally (always latest — busts cache via Railway redeploy)
+RUN npm install -g openclaw@latest
+
+# Create non-root user
+RUN groupadd -g 1001 openclaw \
+  && useradd -u 1001 -g openclaw -m -s /bin/bash openclaw
+
+# Create data directory structure
+RUN mkdir -p /data/.openclaw /data/workspace \
+  && chmod 700 /data/.openclaw \
+  && chown -R openclaw:openclaw /data
+
+# App directory for health server
 WORKDIR /app
-RUN chown node:node /app
 
-ARG OPENCLAW_DOCKER_APT_PACKAGES=""
-RUN if [ -n "$OPENCLAW_DOCKER_APT_PACKAGES" ]; then \
-      apt-get update && \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $OPENCLAW_DOCKER_APT_PACKAGES && \
-      apt-get clean && \
-      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    fi
+# Copy app files (health server, config builder, scripts)
+COPY --chown=openclaw:openclaw package.json ./
+COPY --chown=openclaw:openclaw src ./src
+COPY --chown=openclaw:openclaw config ./config
+COPY --chown=openclaw:openclaw docs ./docs
+COPY --chown=openclaw:openclaw workspace ./workspace-templates
+COPY --chown=openclaw:openclaw config-watcher.sh ./
 
-COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-COPY --chown=node:node ui/package.json ./ui/package.json
-COPY --chown=node:node patches ./patches
-COPY --chown=node:node scripts ./scripts
+# Entrypoint stays root-owned (runs as root, then switches to openclaw)
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh /app/config-watcher.sh
 
-USER node
-RUN pnpm install --frozen-lockfile
+# Environment
+ENV OPENCLAW_STATE_DIR=/data/.openclaw
+ENV OPENCLAW_WORKSPACE_DIR=/data/workspace
+ENV PORT=8080
 
-USER root
-ARG OPENCLAW_INSTALL_BROWSER=""
-RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
-      apt-get update && \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xvfb && \
-      mkdir -p /home/node/.cache/ms-playwright && \
-      PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright \
-      node /app/node_modules/playwright-core/cli.js install --with-deps chromium && \
-      chown -R node:node /home/node/.cache/ms-playwright && \
-      apt-get clean && \
-      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    fi
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -sf http://localhost:8080/healthz || exit 1
 
-USER node
-COPY --chown=node:node . .
-RUN pnpm build
+EXPOSE 8080
 
-ENV OPENCLAW_PREFER_PNPM=1
-RUN pnpm ui:build
-
-ENV NODE_ENV=production
-ENV HOME=/home/node
-
-# ✅ Railway'de yazılabilir alan: /tmp
-ENV OPENCLAW_STATE_DIR=/tmp/openclaw
-ENV OPENCLAW_WORKSPACE_DIR=/tmp/openclaw/workspace
-
-USER node
-#
-# ✅ Railway'nin beklediği $PORT'a bind et
-CMD ["sh", "-lc", "node openclaw.mjs gateway --allow-unconfigured --bind 0.0.0.0 --port ${PORT:-3000}"]
+ENTRYPOINT ["/entrypoint.sh"]
