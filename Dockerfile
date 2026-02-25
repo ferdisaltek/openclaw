@@ -51,6 +51,10 @@ RUN pnpm ui:build
 
 ENV NODE_ENV=production
 
+ENV OPENCLAW_STATE_DIR=/tmp/openclaw
+ENV OPENCLAW_WORKSPACE_DIR=/tmp/openclaw/workspace
+ENV HOME=/home/node
+
 # Security hardening: Run as non-root user
 # The node:22-bookworm image includes a 'node' user (uid 1000)
 # This reduces the attack surface by preventing container escape via root privileges
